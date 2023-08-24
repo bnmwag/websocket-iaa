@@ -1,33 +1,46 @@
 import express from 'express';
 import http from 'http';
-import { Server, type Socket } from 'socket.io';
+import WebSocket from 'ws';
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const wss = new WebSocket.Server({ server });
 
-// Define data type for safety
-interface Data {
-	content1: any;
-	content2: any;
-	content3: any;
-}
+wss.on('connection', (ws) => {
+	console.log('User connected');
 
-// Connection listener for incoming sockets
-io.on('connection', (socket: Socket) => {
-	console.log('a user connected:', socket.id);
+	ws.on('message', (message) => {
+		console.log('Received:', message);
 
-	// Listen to 'state change' event from clients
-	socket.on('state_change', (data: Data) => {
-		console.log('State Change Received:', data);
+		// Parse the message if it's JSON
+		let data;
+		try {
+			data = JSON.parse(message);
+		} catch (err) {
+			console.error('Failed to parse message:', err);
+			return;
+		}
 
-		// Broadcast the data to other clients except the sender
-		socket.broadcast.emit('new_state', data);
+		// Check for 'state_change' event and broadcast
+		if (data.action === 'state_change') {
+			// Broadcast the data to other clients except the sender
+			wss.clients.forEach((client) => {
+				if (client !== ws && client.readyState === WebSocket.OPEN) {
+					client.send(
+						JSON.stringify({ event: 'new_state', ...data })
+					);
+				}
+			});
+		}
+	});
+
+	ws.on('close', () => {
+		console.log('User disconnected');
 	});
 });
 
 // Start the server
-const PORT = 3000;
+const PORT = 6789;
 server.listen(PORT, () => {
 	console.log(`Server is running on http://localhost:${PORT}`);
 });
